@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import joblib
+import base64
 from datetime import datetime
 
 st.set_page_config(
@@ -11,38 +12,52 @@ st.set_page_config(
     layout="wide"
 )
 
-st.markdown("""
+@st.cache_data
+def get_base64_image(path):
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode()
+
+bg_image = get_base64_image("hdb_background.jpg")
+
+st.markdown(f"""
     <style>
-    .hero {
-        background: linear-gradient(135deg, #1a3c5e 0%, #2e8b57 100%);
-        padding: 2rem 2.5rem;
-        border-radius: 12px;
-        margin-bottom: 1.5rem;
-    }
-    .hero-title {
-        font-size: 2.2rem;
+    .stApp {{
+        background: linear-gradient(rgba(10, 15, 20, 0.88), rgba(10, 20, 18, 0.90)),
+                    url("data:image/jpg;base64,{bg_image}");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }}
+    .main .block-container {{
+        background-color: rgba(18, 24, 30, 0.75);
+        border-radius: 16px;
+        padding: 2rem 3rem;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+    }}
+    .hero-title {{
+        font-size: 2.3rem;
         font-weight: 700;
-        color: white;
+        color: #ffffff;
         margin-bottom: 0;
-    }
-    .hero-subtitle {
-        color: #e0e8e4;
-        font-size: 1.05rem;
-        margin-top: 0.3rem;
-    }
-    .price-box {
-        background-color: #f0f7f4;
-        border-left: 6px solid #2e8b57;
+    }}
+    .hero-subtitle {{
+        color: #a8b8c8;
+        font-size: 1.1rem;
+        margin-top: 0.4rem;
+    }}
+    .price-box {{
+        background-color: rgba(46, 139, 87, 0.5);
+        border-left: 6px solid #3fd67a;
         padding: 1.5rem;
         border-radius: 8px;
         margin-top: 1rem;
-    }
-    .metric-card {
-        background-color: #f7f8fa;
-        border-radius: 8px;
-        padding: 1rem;
-        text-align: center;
-    }
+    }}
+    .price-box p {{
+        color: #e8f0ec !important;
+    }}
+    h1, h2, h3, p, label, .stMarkdown, .stCaption {{
+        color: #e8edf2 !important;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -55,12 +70,36 @@ def load_resources():
 
 model, model_columns, stats = load_resources()
 
-st.markdown("""
-    <div class="hero">
-        <p class="hero-title">East Region HDB Resale Price Estimator</p>
-        <p class="hero-subtitle">Instant, data-driven price estimates for flats in Bedok, Pasir Ris, and Tampines</p>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown('<p class="hero-title">East Region HDB Resale Price Estimator</p>', unsafe_allow_html=True)
+st.markdown('<p class="hero-subtitle">Instant, data-driven price estimates for flats in Bedok, Pasir Ris, and Tampines</p>', unsafe_allow_html=True)
+st.write("")
+
+with st.expander("Learn more about the data and model behind this estimate"):
+    st.markdown("""
+    **Data source:** Official HDB resale flat transaction records from data.gov.sg,
+    covering transactions registered from January 2017 onwards, restricted to the
+    East Region towns of Bedok, Pasir Ris, and Tampines.
+
+    **What the model learned from:** Each flat's town, flat type, flat model, floor
+    area, storey level, remaining lease, and transaction timing, matched against its
+    actual resale price.
+
+    **How it works:** A Random Forest model, an ensemble of many decision trees that
+    each learn different patterns in the data and vote together on a final estimate.
+    This approach handles the real-world irregularities in resale pricing (different
+    flat models, uneven transaction volumes across towns) better than a single
+    straight-line model would.
+
+    **Model performance:** On transactions the model had never seen before, estimates
+    were typically within about $25,200 of the actual sale price, explaining roughly
+    96% of the price variation across all three towns.
+
+    **Limitations:** Estimates are based on historical patterns and are meant as a
+    starting reference point, not a professional valuation. Rare flat models and
+    less common towns (fewer historical transactions) may have wider uncertainty.
+    """)
+
+st.divider()
 
 TOWN_OPTIONS = ["BEDOK", "PASIR RIS", "TAMPINES"]
 FLAT_TYPE_OPTIONS = ["2 ROOM", "3 ROOM", "4 ROOM", "5 ROOM", "EXECUTIVE", "MULTI-GENERATION"]
@@ -86,16 +125,6 @@ with col_left:
     )
 
     predict_clicked = st.button("Get Price Estimate", type="primary", use_container_width=True)
-
-    with st.expander("How this estimate works"):
-        st.write(
-            "This tool uses a Random Forest model trained on real HDB resale "
-            "transactions from 2017 onwards in Bedok, Pasir Ris, and Tampines. "
-            "The estimate is a typical price for flats with similar characteristics. "
-            "The range shown reflects how much the model's underlying trees "
-            "disagree with each other, wider ranges mean less certainty, usually "
-            "for less common flat configurations."
-        )
 
 with col_right:
     st.subheader("Estimated Resale Price")
@@ -125,8 +154,7 @@ with col_right:
 
                 prediction = model.predict(input_row)[0]
 
-                # Price range from spread across individual trees in the forest
-                tree_preds = [tree.predict(input_row)[0] for tree in model.estimators_]
+                tree_preds = [tree.predict(input_row.values)[0] for tree in model.estimators_]
                 lower = np.percentile(tree_preds, 10)
                 upper = np.percentile(tree_preds, 90)
 
@@ -149,11 +177,11 @@ with col_right:
     if "prediction" in st.session_state:
         st.markdown(f"""
             <div class="price-box">
-                <p style="margin:0; color:#5a6b7d;">Estimated Resale Price</p>
-                <p style="margin:0; font-size:2.2rem; font-weight:700; color:#1a3c5e;">
+                <p style="margin:0; color:#a8b8c8;">Estimated Resale Price</p>
+                <p style="margin:0; font-size:2.2rem; font-weight:700; color:#ffffff;">
                     ${st.session_state['prediction']:,.0f}
                 </p>
-                <p style="margin:0.3rem 0 0 0; color:#5a6b7d; font-size:0.9rem;">
+                <p style="margin:0.3rem 0 0 0; color:#a8b8c8; font-size:0.9rem;">
                     Typical range: ${st.session_state['lower']:,.0f} to ${st.session_state['upper']:,.0f}
                 </p>
             </div>
@@ -177,8 +205,13 @@ with col_right:
             t: stats['town_flattype_avg_price'].get(t, {}).get(flat_type_sel, 0)
             for t in TOWN_OPTIONS
         }
+
+        plt.style.use('dark_background')
+
         fig, ax = plt.subplots(figsize=(6, 3))
-        colors = ['#2e8b57' if t == town_sel else '#c8d6cf' for t in chart_data.keys()]
+        fig.patch.set_alpha(0)
+        ax.set_facecolor('none')
+        colors = ['#3fd67a' if t == town_sel else '#4a5568' for t in chart_data.keys()]
         ax.bar(chart_data.keys(), chart_data.values(), color=colors)
         ax.set_ylabel("Average Resale Price (SGD)")
         st.pyplot(fig)
@@ -187,8 +220,11 @@ with col_right:
         year_data = stats['town_year_avg_price'].get(town_sel, {})
         years = sorted(year_data.keys())
         prices = [year_data[y] for y in years]
+
         fig2, ax2 = plt.subplots(figsize=(6, 2.5))
-        ax2.plot(years, prices, marker='o', color='#1a3c5e')
+        fig2.patch.set_alpha(0)
+        ax2.set_facecolor('none')
+        ax2.plot(years, prices, marker='o', color='#3fd67a')
         ax2.set_ylabel("Avg Resale Price (SGD)")
         st.pyplot(fig2)
 
@@ -196,4 +232,4 @@ with col_right:
         st.info("Fill in the flat details and click **Get Price Estimate** to see a prediction.")
 
 st.divider()
-st.caption("Estimates are generated by a Random Forest model trained on HDB resale transactions from 2017 onwards, restricted to Bedok, Pasir Ris, and Tampines.")
+st.caption("Estimates are generated by a Random Forest model trained on HDB resale transactions from 2017 onwards, restricted to Bedok, Pasir Ris, and Tampines. For guidance only, not a substitute for professional valuation.")
